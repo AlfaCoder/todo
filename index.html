@@ -69,6 +69,13 @@
   button.ghost:hover { color: var(--text); border-color: var(--muted); }
   button.icon { background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; font-size: .9rem; padding: 2px 6px; opacity: .6; }
   button.icon:hover { color: var(--danger); opacity: 1; }
+  .handle { flex: none; cursor: grab; color: var(--muted); opacity: .45; padding: 1px 2px; margin-top: 1px;
+            user-select: none; touch-action: none; font-size: .95rem; letter-spacing: -2px; line-height: 1.2; }
+  .handle:hover { opacity: 1; color: var(--accent); }
+  .dragging { opacity: .95; background: var(--card2) !important; outline: 1px solid var(--accent);
+              box-shadow: 0 0 18px rgba(57,255,136,.18); position: relative; z-index: 2; }
+  body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; }
+  .note-head .handle { margin-right: 2px; }
   .filters { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
   .filters button::before { content: "--"; opacity: .5; }
   .filters button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
@@ -180,7 +187,17 @@
   let token = ls.get('tn_token');
   let gistId = ls.get('tn_gist');
   let data = { todos: [], notes: [], updated: 0 };
-  try { const c = JSON.parse(ls.get('tn_cache') || 'null'); if (c) data = c; } catch {}
+  // Ab Version 2 bestimmt die Reihenfolge im Array die Anzeige-Reihenfolge.
+  function normalize(d) {
+    d = { todos: d.todos || [], notes: d.notes || [], updated: d.updated || 0, v: d.v || 1 };
+    if (d.v < 2) {
+      d.todos.sort((a, b) => (b.created || 0) - (a.created || 0));
+      d.notes.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+      d.v = 2;
+    }
+    return d;
+  }
+  try { const c = JSON.parse(ls.get('tn_cache') || 'null'); if (c) data = normalize(c); } catch {}
   let filter = 'open';
   let editingTodo = null;
   let editingNote = null;
@@ -225,7 +242,7 @@
       let content = f.content;
       if (f.truncated) content = await (await fetch(f.raw_url, { cache: 'no-store' })).text();
       const remote = JSON.parse(content || '{}');
-      data = { todos: remote.todos || [], notes: remote.notes || [], updated: remote.updated || 0 };
+      data = normalize(remote);
       ls.set('tn_cache', JSON.stringify(data));
       render();
       status('Synchronisiert');
@@ -264,7 +281,7 @@
   function renderTodos() {
     const list = data.todos
       .filter(t => filter === 'all' || (filter === 'done' ? t.done : !t.done))
-      .sort((a, b) => (a.done - b.done) || (b.created - a.created));
+      .sort((a, b) => a.done - b.done); // stabil: offene zuerst, sonst eigene Reihenfolge
     const ul = $('todoList');
     if (!list.length) { ul.innerHTML = '<li class="empty">Keine Aufgaben</li>'; return; }
     ul.innerHTML = list.map(t => {
@@ -276,6 +293,7 @@
           <button class="ghost" data-act="cancel">Abbrechen</button></div></div></li>`;
       return `
         <li class="todo ${t.done ? 'done' : ''}" data-id="${t.id}">
+          <span class="handle" title="Ziehen zum Verschieben" aria-hidden="true">⋮⋮</span>
           <input type="checkbox" data-act="toggle" ${t.done ? 'checked' : ''} aria-label="Erledigt">
           <div class="todo-body" data-act="edit">
             <div class="todo-title">${esc(t.title)}</div>
@@ -290,21 +308,65 @@
   function renderNotes() {
     const q = $('noteSearch').value.trim().toLowerCase();
     const list = data.notes
-      .filter(n => !q || (n.title + ' ' + n.text).toLowerCase().includes(q))
-      .sort((a, b) => b.updated - a.updated);
+      .filter(n => !q || (n.title + ' ' + n.text).toLowerCase().includes(q));
     const box = $('noteList');
     if (!list.length) { box.innerHTML = '<div class="empty">Keine Notizen</div>'; return; }
     box.innerHTML = list.map(n => `
       <div class="card note" data-id="${n.id}">
         <div class="note-head">
-          <div><div class="note-title">${esc(n.title || 'Ohne Titel')}</div>
+          <span class="handle" title="Ziehen zum Verschieben" aria-hidden="true">⋮⋮</span>
+          <div style="flex:1;min-width:0"><div class="note-title">${esc(n.title || 'Ohne Titel')}</div>
           <div class="note-date">${new Date(n.updated).toLocaleString('de-DE')}</div></div>
-          <div><button class="ghost" data-act="edit">Bearbeiten</button>
+          <div style="flex:none"><button class="ghost" data-act="edit">Bearbeiten</button>
           <button class="icon" data-act="del" title="Löschen" aria-label="Löschen">✕</button></div>
         </div>
         ${n.text ? `<div class="note-text">${esc(n.text)}</div>` : ''}
       </div>`).join('');
   }
+
+  /* ---------- Sortieren per Drag & Drop (Maus + Touch) ---------- */
+  // Nach dem Ziehen werden die sichtbaren Elemente in die Plätze zurückgeschrieben,
+  // die sie vorher im Gesamt-Array belegt hatten. So bleiben gefilterte/ausgeblendete
+  // Einträge an ihrer Stelle.
+  function makeSortable(container, itemSel, getArr, setArr, rerender) {
+    let drag = null;
+    container.addEventListener('pointerdown', e => {
+      const h = e.target.closest('.handle'); if (!h || e.button > 0) return;
+      const el = h.closest(itemSel); if (!el) return;
+      e.preventDefault();
+      const ids = [...container.querySelectorAll(itemSel)].map(x => x.dataset.id);
+      drag = { el, pid: e.pointerId, startIds: ids };
+      h.setPointerCapture(e.pointerId);
+      el.classList.add('dragging'); document.body.classList.add('is-dragging');
+    });
+    container.addEventListener('pointermove', e => {
+      if (!drag || e.pointerId !== drag.pid) return;
+      const items = [...container.querySelectorAll(itemSel)].filter(x => x !== drag.el);
+      const before = items.find(x => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+      if (before) { if (drag.el.nextElementSibling !== before) container.insertBefore(drag.el, before); }
+      else if (container.lastElementChild !== drag.el) container.appendChild(drag.el);
+      // Am Rand automatisch scrollen
+      if (e.clientY < 40) window.scrollBy(0, -12); else if (e.clientY > innerHeight - 40) window.scrollBy(0, 12);
+    });
+    const end = e => {
+      if (!drag || e.pointerId !== drag.pid) return;
+      drag.el.classList.remove('dragging'); document.body.classList.remove('is-dragging');
+      const newIds = [...container.querySelectorAll(itemSel)].map(x => x.dataset.id);
+      const changed = newIds.join() !== drag.startIds.join();
+      drag = null;
+      if (!changed) return;
+      const arr = getArr(), byId = new Map(arr.map(x => [x.id, x]));
+      const visible = new Set(newIds);
+      const slots = arr.map((x, i) => visible.has(x.id) ? i : -1).filter(i => i >= 0);
+      const next = arr.slice();
+      slots.forEach((slot, k) => { next[slot] = byId.get(newIds[k]); });
+      setArr(next); save(); rerender();
+    };
+    container.addEventListener('pointerup', end);
+    container.addEventListener('pointercancel', end);
+  }
+  makeSortable($('todoList'), 'li.todo[data-id]', () => data.todos, a => { data.todos = a; }, renderTodos);
+  makeSortable($('noteList'), '.note[data-id]', () => data.notes, a => { data.notes = a; }, renderNotes);
 
   /* ---------- Events ---------- */
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
@@ -324,7 +386,7 @@
   $('todoForm').onsubmit = e => {
     e.preventDefault();
     const v = $('todoInput').value.trim(); if (!v) return;
-    data.todos.push({ id: uid(), title: v, note: '', done: false, created: Date.now() });
+    data.todos.unshift({ id: uid(), title: v, note: '', done: false, created: Date.now() });
     $('todoInput').value = '';
     save(); renderTodos();
   };
@@ -353,7 +415,7 @@
       const n = data.notes.find(x => x.id === editingNote);
       if (n) { n.title = title; n.text = text; n.updated = Date.now(); }
     } else {
-      data.notes.push({ id: uid(), title, text, created: Date.now(), updated: Date.now() });
+      data.notes.unshift({ id: uid(), title, text, created: Date.now(), updated: Date.now() });
     }
     resetNoteForm(); save(); renderNotes();
   };
