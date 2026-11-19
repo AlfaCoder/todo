@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2563eb">
+<title>Todo & Notizen</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1f2328; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #2563eb; --danger: #dc2626; --ok: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #181b21; --text: #e6e8eb; --muted: #9aa1ab;
+            --line: #2a2f37; --accent: #5b8cff; --danger: #f87171; --ok: #4ade80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px 16px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  .status { font-size: .8rem; color: var(--muted); }
+  .tabs { display: flex; gap: 4px; background: var(--card); border: 1px solid var(--line);
+          border-radius: 10px; padding: 4px; margin-bottom: 12px; }
+  .tabs button { flex: 1; border: 0; background: none; color: var(--text); padding: 8px;
+                 border-radius: 7px; font: inherit; cursor: pointer; }
+  .tabs button.active { background: var(--accent); color: #fff; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  form.add { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  input[type=text], input[type=password], textarea, select {
+    font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 10px; width: 100%; }
+  textarea { resize: vertical; min-height: 70px; }
+  form.add input[type=text] { flex: 1; min-width: 0; width: auto; }
+  button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+                   padding: 9px 14px; font: inherit; cursor: pointer; }
+  button.ghost { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 8px;
+                 padding: 6px 10px; font: inherit; font-size: .85rem; cursor: pointer; }
+  button.icon { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 4px 6px; }
+  button.icon:hover { color: var(--danger); }
+  .filters { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .filters button.on { border-color: var(--accent); color: var(--accent); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li.todo { display: flex; gap: 10px; align-items: flex-start; padding: 10px 4px; border-bottom: 1px solid var(--line); }
+  li.todo:last-child { border-bottom: 0; }
+  li.todo input[type=checkbox] { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+  .todo-body { flex: 1; min-width: 0; }
+  .todo-title { cursor: pointer; word-wrap: break-word; }
+  .done .todo-title { text-decoration: line-through; color: var(--muted); }
+  .todo-note { font-size: .88rem; color: var(--muted); white-space: pre-wrap; margin-top: 3px; word-wrap: break-word; }
+  .todo-edit textarea { margin-top: 6px; }
+  .row { display: flex; gap: 6px; margin-top: 6px; }
+  .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+  .note { margin-bottom: 10px; }
+  .note-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .note-title { font-weight: 600; word-wrap: break-word; }
+  .note-date { font-size: .75rem; color: var(--muted); }
+  .note-text { white-space: pre-wrap; margin-top: 6px; word-wrap: break-word; }
+  .search { margin-bottom: 10px; }
+  .setup p { color: var(--muted); font-size: .92rem; }
+  .setup ol { padding-left: 20px; font-size: .92rem; }
+  .err { color: var(--danger); font-size: .9rem; margin-top: 8px; }
+  a { color: var(--accent); }
+  .hidden { display: none !important; }
+  footer { margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Todo &amp; Notizen</h1>
+    <span class="status" id="status"></span>
+  </header>
+
+  <!-- Einrichtung -->
+  <section id="setup" class="card setup hidden">
+    <h2 style="margin-top:0;font-size:1.1rem">Einrichtung (einmal pro Gerät)</h2>
+    <p>Deine Daten werden in einem <b>privaten Gist</b> in deinem GitHub-Konto gespeichert. So sind sie auf jedem Gerät gleich. Dafür braucht die App einen GitHub-Token, der nur Gists lesen/schreiben darf.</p>
+    <ol>
+      <li>Öffne <a href="https://github.com/settings/tokens/new?scopes=gist&description=Todo-Notizen-App" target="_blank" rel="noopener">github.com/settings/tokens/new</a> (Scope <b>gist</b> ist schon angehakt).</li>
+      <li>Ablaufdatum wählen (z.&nbsp;B. „No expiration“) und <b>Generate token</b> klicken.</li>
+      <li>Token hier einfügen. Er bleibt nur auf diesem Gerät gespeichert.</li>
+    </ol>
+    <input type="password" id="tokenInput" placeholder="ghp_…" autocomplete="off">
+    <div class="row"><button class="primary" id="tokenSave">Verbinden</button></div>
+    <div class="err" id="setupErr"></div>
+  </section>
+
+  <!-- App -->
+  <section id="app" class="hidden">
+    <div class="tabs">
+      <button data-tab="todos" class="active">Aufgaben</button>
+      <button data-tab="notes">Notizen</button>
+    </div>
+
+    <div id="tab-todos">
+      <form class="add" id="todoForm">
+        <input type="text" id="todoInput" placeholder="Neue Aufgabe …" autocomplete="off">
+        <button class="primary" type="submit">+</button>
+      </form>
+      <div class="filters" id="filters">
+        <button class="ghost on" data-f="open">Offen</button>
+        <button class="ghost" data-f="done">Erledigt</button>
+        <button class="ghost" data-f="all">Alle</button>
+      </div>
+      <div class="card"><ul id="todoList"></ul></div>
+    </div>
+
+    <div id="tab-notes" class="hidden">
+      <form class="card" id="noteForm" style="margin-bottom:12px">
+        <input type="text" id="noteTitle" placeholder="Titel" autocomplete="off" style="margin-bottom:8px">
+        <textarea id="noteText" placeholder="Notiz …"></textarea>
+        <div class="row"><button class="primary" type="submit" id="noteSubmit">Speichern</button>
+          <button class="ghost hidden" type="button" id="noteCancel">Abbrechen</button></div>
+      </form>
+      <input type="text" class="search" id="noteSearch" placeholder="Notizen durchsuchen …">
+      <div id="noteList"></div>
+    </div>
+
+    <footer><button class="ghost" id="logout">Token auf diesem Gerät entfernen</button></footer>
+  </section>
+</div>
+
+<script>
+(() => {
+  const GIST_DESC = 'todo-notes-app-data';
+  const FILE = 'data.json';
+  const API = 'https://api.github.com';
+  const $ = id => document.getElementById(id);
+
+  const ls = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} },
+  };
+
+  let token = ls.get('tn_token');
+  let gistId = ls.get('tn_gist');
+  let data = { todos: [], notes: [], updated: 0 };
+  try { const c = JSON.parse(ls.get('tn_cache') || 'null'); if (c) data = c; } catch {}
+  let filter = 'open';
+  let editingTodo = null;
+  let editingNote = null;
+  let saveTimer = null;
+  let dirty = false;
+
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const status = t => { $('status').textContent = t; };
+
+  async function gh(path, opts = {}) {
+    const r = await fetch(API + path, {
+      ...opts,
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json',
+                 'Content-Type': 'application/json', ...(opts.headers || {}) },
+      cache: 'no-store',
+    });
+    if (!r.ok) { const e = new Error('GitHub ' + r.status); e.status = r.status; throw e; }
+    return r.json();
+  }
+
+  async function findOrCreateGist() {
+    for (let page = 1; page <= 10; page++) {
+      const list = await gh('/gists?per_page=100&page=' + page);
+      const g = list.find(x => x.description === GIST_DESC && x.files[FILE]);
+      if (g) return g.id;
+      if (list.length < 100) break;
+    }
+    const g = await gh('/gists', { method: 'POST', body: JSON.stringify({
+      description: GIST_DESC, public: false,
+      files: { [FILE]: { content: JSON.stringify(data, null, 1) } } }) });
+    return g.id;
+  }
+
+  async function load() {
+    if (dirty) return;
+    status('Lade …');
+    try {
+      if (!gistId) { gistId = await findOrCreateGist(); ls.set('tn_gist', gistId); }
+      const g = await gh('/gists/' + gistId);
+      const f = g.files[FILE];
+      let content = f.content;
+      if (f.truncated) content = await (await fetch(f.raw_url, { cache: 'no-store' })).text();
+      const remote = JSON.parse(content || '{}');
+      data = { todos: remote.todos || [], notes: remote.notes || [], updated: remote.updated || 0 };
+      ls.set('tn_cache', JSON.stringify(data));
+      render();
+      status('Synchronisiert');
+    } catch (e) {
+      if (e.status === 404) { gistId = null; ls.del('tn_gist'); return load(); }
+      if (e.status === 401) { status(''); logout('Token ungültig oder abgelaufen.'); return; }
+      status('Offline – lokale Kopie');
+    }
+  }
+
+  function save() {
+    data.updated = Date.now();
+    ls.set('tn_cache', JSON.stringify(data));
+    dirty = true;
+    status('Speichere …');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(push, 600);
+  }
+
+  async function push() {
+    try {
+      await gh('/gists/' + gistId, { method: 'PATCH',
+        body: JSON.stringify({ files: { [FILE]: { content: JSON.stringify(data, null, 1) } } }) });
+      dirty = false;
+      status('Gespeichert');
+    } catch (e) {
+      status('Speichern fehlgeschlagen – neuer Versuch …');
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(push, 5000);
+    }
+  }
+
+  /* ---------- Rendering ---------- */
+  function render() { renderTodos(); renderNotes(); }
+
+  function renderTodos() {
+    const list = data.todos
+      .filter(t => filter === 'all' || (filter === 'done' ? t.done : !t.done))
+      .sort((a, b) => (a.done - b.done) || (b.created - a.created));
+    const ul = $('todoList');
+    if (!list.length) { ul.innerHTML = '<li class="empty">Keine Aufgaben</li>'; return; }
+    ul.innerHTML = list.map(t => {
+      if (editingTodo === t.id) return `
+        <li class="todo todo-edit" data-id="${t.id}"><div class="todo-body">
+          <input type="text" class="e-title" value="${esc(t.title)}">
+          <textarea class="e-note" placeholder="Notiz zur Aufgabe …">${esc(t.note || '')}</textarea>
+          <div class="row"><button class="primary" data-act="save">Speichern</button>
+          <button class="ghost" data-act="cancel">Abbrechen</button></div></div></li>`;
+      return `
+        <li class="todo ${t.done ? 'done' : ''}" data-id="${t.id}">
+          <input type="checkbox" data-act="toggle" ${t.done ? 'checked' : ''} aria-label="Erledigt">
+          <div class="todo-body" data-act="edit">
+            <div class="todo-title">${esc(t.title)}</div>
+            ${t.note ? `<div class="todo-note">${esc(t.note)}</div>` : ''}
+          </div>
+          <button class="icon" data-act="del" title="Löschen" aria-label="Löschen">✕</button>
+        </li>`;
+    }).join('');
+    const et = ul.querySelector('.e-title'); if (et) et.focus();
+  }
+
+  function renderNotes() {
+    const q = $('noteSearch').value.trim().toLowerCase();
+    const list = data.notes
+      .filter(n => !q || (n.title + ' ' + n.text).toLowerCase().includes(q))
+      .sort((a, b) => b.updated - a.updated);
+    const box = $('noteList');
+    if (!list.length) { box.innerHTML = '<div class="empty">Keine Notizen</div>'; return; }
+    box.innerHTML = list.map(n => `
+      <div class="card note" data-id="${n.id}">
+        <div class="note-head">
+          <div><div class="note-title">${esc(n.title || 'Ohne Titel')}</div>
+          <div class="note-date">${new Date(n.updated).toLocaleString('de-DE')}</div></div>
+          <div><button class="ghost" data-act="edit">Bearbeiten</button>
+          <button class="icon" data-act="del" title="Löschen" aria-label="Löschen">✕</button></div>
+        </div>
+        ${n.text ? `<div class="note-text">${esc(n.text)}</div>` : ''}
+      </div>`).join('');
+  }
+
+  /* ---------- Events ---------- */
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
+    $('tab-todos').classList.toggle('hidden', b.dataset.tab !== 'todos');
+    $('tab-notes').classList.toggle('hidden', b.dataset.tab !== 'notes');
+    ls.set('tn_tab', b.dataset.tab);
+  });
+
+  $('filters').onclick = e => {
+    const f = e.target.dataset.f; if (!f) return;
+    filter = f;
+    document.querySelectorAll('#filters button').forEach(x => x.classList.toggle('on', x.dataset.f === f));
+    renderTodos();
+  };
+
+  $('todoForm').onsubmit = e => {
+    e.preventDefault();
+    const v = $('todoInput').value.trim(); if (!v) return;
+    data.todos.push({ id: uid(), title: v, note: '', done: false, created: Date.now() });
+    $('todoInput').value = '';
+    save(); renderTodos();
+  };
+
+  $('todoList').onclick = e => {
+    const li = e.target.closest('li[data-id]'); if (!li) return;
+    const t = data.todos.find(x => x.id === li.dataset.id); if (!t) return;
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'toggle') { t.done = e.target.checked; t.doneAt = t.done ? Date.now() : null; save(); renderTodos(); }
+    else if (act === 'del') { if (confirm('Aufgabe löschen?')) { data.todos = data.todos.filter(x => x !== t); save(); renderTodos(); } }
+    else if (act === 'edit') { editingTodo = t.id; renderTodos(); }
+    else if (act === 'cancel') { editingTodo = null; renderTodos(); }
+    else if (act === 'save') {
+      const title = li.querySelector('.e-title').value.trim();
+      if (title) t.title = title;
+      t.note = li.querySelector('.e-note').value.trim();
+      editingTodo = null; save(); renderTodos();
+    }
+  };
+
+  $('noteForm').onsubmit = e => {
+    e.preventDefault();
+    const title = $('noteTitle').value.trim(), text = $('noteText').value.trim();
+    if (!title && !text) return;
+    if (editingNote) {
+      const n = data.notes.find(x => x.id === editingNote);
+      if (n) { n.title = title; n.text = text; n.updated = Date.now(); }
+    } else {
+      data.notes.push({ id: uid(), title, text, created: Date.now(), updated: Date.now() });
+    }
+    resetNoteForm(); save(); renderNotes();
+  };
+  function resetNoteForm() {
+    editingNote = null; $('noteTitle').value = ''; $('noteText').value = '';
+    $('noteSubmit').textContent = 'Speichern'; $('noteCancel').classList.add('hidden');
+  }
+  $('noteCancel').onclick = resetNoteForm;
+  $('noteSearch').oninput = renderNotes;
+  $('noteList').onclick = e => {
+    const card = e.target.closest('[data-id]'); if (!card) return;
+    const n = data.notes.find(x => x.id === card.dataset.id); if (!n) return;
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'del') { if (confirm('Notiz löschen?')) { data.notes = data.notes.filter(x => x !== n); save(); renderNotes(); } }
+    else if (act === 'edit') {
+      editingNote = n.id; $('noteTitle').value = n.title; $('noteText').value = n.text;
+      $('noteSubmit').textContent = 'Aktualisieren'; $('noteCancel').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' }); $('noteText').focus();
+    }
+  };
+
+  $('tokenSave').onclick = async () => {
+    const t = $('tokenInput').value.trim(); if (!t) return;
+    token = t; $('setupErr').textContent = '';
+    try { await gh('/user'); } catch (e) { $('setupErr').textContent = 'Token funktioniert nicht (' + e.message + ').'; token = null; return; }
+    ls.set('tn_token', t); $('tokenInput').value = '';
+    start();
+  };
+
+  function logout(msg) {
+    ls.del('tn_token'); ls.del('tn_gist'); token = null; gistId = null;
+    $('app').classList.add('hidden'); $('setup').classList.remove('hidden');
+    $('setupErr').textContent = msg || '';
+  }
+  $('logout').onclick = () => { if (confirm('Token von diesem Gerät entfernen? Deine Daten bleiben im Gist erhalten.')) logout(); };
+
+  // Beim Zurückkehren zur App neu laden (Sync zwischen Geräten)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && token) load(); });
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  function start() {
+    $('setup').classList.add('hidden'); $('app').classList.remove('hidden');
+    const tab = ls.get('tn_tab'); if (tab === 'notes') document.querySelector('.tabs [data-tab=notes]').click();
+    render(); load();
+  }
+
+  if (token) start(); else $('setup').classList.remove('hidden');
+})();
+</script>
+</body>
+</html>
